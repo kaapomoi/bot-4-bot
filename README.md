@@ -1,7 +1,12 @@
 # bot-4-bot
 
-tft bot
+### Library Features
 
-Features
+- Fetch summoner data from the Riot API
+- Analyze and summarize fetched data
 
-- Fetch player data
+### Front-end Features
+
+- Discord bot user interface (serenity-rs)
+- Retrieve data from the backend
+- Format and display the retrieved data
