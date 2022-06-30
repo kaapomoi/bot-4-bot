@@ -1,39 +1,236 @@
-use std::env;
+use std::{env, option};
+use std::process::Command;
 
-use serenity::async_trait;
 use serenity::model::channel::Message;
+use serenity::async_trait;
 use serenity::model::gateway::Ready;
+use serenity::model::id::GuildId;
+use serenity::model::interactions::application_command::{
+    ApplicationCommand,
+    ApplicationCommandInteractionDataOptionValue,
+    ApplicationCommandOptionType,
+};
+use serenity::model::interactions::{Interaction, InteractionResponseType};
 use serenity::prelude::*;
 
 struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
-    // Set a handler for the `message` event - so that whenever a new message
-    // is received - the closure (or function) passed will be called.
-    //
-    // Event handlers are dispatched through a threadpool, and so multiple
-    // events can be dispatched simultaneously.
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!ping" {
-            // Sending a message can fail, due to a network error, an
-            // authentication error, or lack of permissions to post in the
-            // channel, so log to stdout when some error happens, with a
-            // description of it.
-            if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
-                println!("Error sending message: {:?}", why);
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+
+            println!("{}", command.data.name.as_str());
+
+            let content = match command.data.name.as_str() {
+                "ping" => "Hey, I'm alive!".to_string(),
+                "id" => {
+                    let options = command
+                        .data
+                        .options
+                        .get(0)
+                        .expect("Expected user option")
+                        .resolved
+                        .as_ref()
+                        .expect("Expected user object");
+
+                    if let ApplicationCommandInteractionDataOptionValue::User(user, _member) =
+                        options
+                    {
+                        format!("{}'s id is {}", user.tag(), user.id)
+                    } else {
+                        "Please provide a valid user".to_string()
+                    }
+                },
+                "attachmentinput" => {
+                    let options = command
+                        .data
+                        .options
+                        .get(0)
+                        .expect("Expected attachment option")
+                        .resolved
+                        .as_ref()
+                        .expect("Expected attachment object");
+
+                    if let ApplicationCommandInteractionDataOptionValue::Attachment(attachment) =
+                        options
+                    {
+                        format!(
+                            "Attachment name: {}, attachment size: {}",
+                            attachment.filename, attachment.size
+                        )
+                    } else {
+                        "Please provide a valid attachment".to_string()
+                    }
+                },
+                "kaapotoohot" => "WAAAAAAGGGH IT'S TOO HOT WAAAAAAAAAAAAAAAAAAAGH!!!!!!!!!".to_string(),
+                "bot4" => {
+
+                    //TODO add actual implementation to calculate bot 4 
+
+
+                    for option in &command.data.options {
+                        println!("Option {}", option.name);
+                    }
+                    "Kaapo".to_string()
+                },
+                _ => "not implemented :(".to_string(),
+            };
+
+            if let Err(why) = command
+                .create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content(content))
+                })
+                .await
+            {
+                println!("Cannot respond to slash command: {}", why);
             }
         }
     }
 
-    // Set a handler to be called on the `ready` event. This is called when a
-    // shard is booted, and a READY payload is sent by Discord. This payload
-    // contains data like the current user's guild Ids, current user data,
-    // private channels, and more.
-    //
-    // In this case, just print what the current user's username is.
-    async fn ready(&self, _: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
+
+        let guild_id = GuildId(
+            env::var("GUILD_ID")
+                .expect("Expected GUILD_ID in environment")
+                .parse()
+                .expect("GUILD_ID must be an integer"),
+        );
+
+        let commands = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
+            commands
+                .create_application_command(|command| {
+                    command.name("ping").description("A ping command")
+                })
+                .create_application_command(|command| {
+                    command.name("id").description("Get a user id").create_option(|option| {
+                        option
+                            .name("id")
+                            .description("The user to lookup")
+                            .kind(ApplicationCommandOptionType::User)
+                            .required(true)
+                    })
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("welcome")
+                        .description("Welcome a user")
+                        .create_option(|option| {
+                            option
+                                .name("user")
+                                .description("The user to welcome")
+                                .kind(ApplicationCommandOptionType::User)
+                                .required(true)
+                        })
+                        .create_option(|option| {
+                            option
+                                .name("message")
+                                .description("The message to send")
+                                .kind(ApplicationCommandOptionType::String)
+                                .required(true)
+                                .add_string_choice(
+                                    "Welcome to our cool server! Ask me if you need help",
+                                    "pizza",
+                                )
+                                .add_string_choice("Hey, do you want a coffee?", "coffee")
+                                .add_string_choice(
+                                    "Welcome to the club, you're now a good person. Well, I hope.",
+                                    "club",
+                                )
+                                .add_string_choice(
+                                    "I hope that you brought a controller to play together!",
+                                    "game",
+                                )
+                        })
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("numberinput")
+                        .description("Test command for number input")
+                        .create_option(|option| {
+                            option
+                                .name("int")
+                                .description("An integer from 5 to 10")
+                                .kind(ApplicationCommandOptionType::Integer)
+                                .min_int_value(5)
+                                .max_int_value(10)
+                                .required(true)
+                        })
+                        .create_option(|option| {
+                            option
+                                .name("number")
+                                .description("A float from -3.3 to 234.5")
+                                .kind(ApplicationCommandOptionType::Number)
+                                .min_number_value(-3.3)
+                                .max_number_value(234.5)
+                                .required(true)
+                        })
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("attachmentinput")
+                        .description("Test command for attachment input")
+                        .create_option(|option| {
+                            option
+                                .name("attachment")
+                                .description("A file")
+                                .kind(ApplicationCommandOptionType::Attachment)
+                                .required(true)
+                        })
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("kaapotoohot")
+                        .description("Test command for when Kaapo feels too hot")
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("bot4")
+                        .description("Gives the bot 4 player from given players")
+                        .create_option(|option| {
+                            option
+                                .name("username1")
+                                .description("user")
+                                .kind(ApplicationCommandOptionType::User)
+                                .required(true)
+                        })
+                        .create_option(|option| {
+                            option
+                                .name("username2")
+                                .description("user")
+                                .kind(ApplicationCommandOptionType::User)
+                                .required(false)
+                        })
+                        .create_option(|option| {
+                            option
+                                .name("username3")
+                                .description("user")
+                                .kind(ApplicationCommandOptionType::User)
+                                .required(false)
+                        })
+                        .create_option(|option| {
+                            option
+                                .name("username4")
+                                .description("user")
+                                .kind(ApplicationCommandOptionType::User)
+                                .required(false)
+                        })
+                })
+        })
+        .await;
+
+        println!("I now have the following guild slash commands: {:#?}", commands);
+
+        let guild_command =
+            ApplicationCommand::create_global_application_command(&ctx.http, |command| {
+                command.name("wonderful_command").description("An amazing command")
+            })
+            .await;
+
+        println!("I created the following global slash command: {:#?}", guild_command);
     }
 }
 
@@ -41,16 +238,11 @@ impl EventHandler for Handler {
 #[tokio::main]
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    // Set gateway intents, which decides what events the bot will be notified about
-    let intents = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
 
     // Create a new instance of the Client, logging in as a bot. This will
     // automatically prepend your bot token with "Bot ", which is a requirement
     // by Discord for bot users.
-    let mut client =
-        Client::builder(&token, intents).event_handler(Handler).await.expect("Err creating client");
+    let mut client = Client::builder(&token, GatewayIntents::empty()).event_handler(Handler).await.expect("Error creating client");
 
     // Finally, start a single shard, and start listening to events.
     //
