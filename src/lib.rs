@@ -40,6 +40,7 @@ pub mod fetcher {
         resp.unwrap().text().await.unwrap()
     }
 
+
 }
 
 #[cfg(test)]
